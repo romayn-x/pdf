@@ -1,0 +1,49 @@
+{
+  "name": "pdf-watermark-react",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "electron:preview": "pnpm build && electron .",
+    "dist:exe": "pnpm build && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.5.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "antd": "^5.23.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.7.284",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^6.0.7"
+  },
+  "build": {
+    "appId": "com.local.pdfwatermark",
+    "productName": "PDF水印工具",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
