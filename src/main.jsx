@@ -3,7 +3,10 @@ import { createRoot } from "react-dom/client";
 import { ConfigProvider } from "antd";
 import "antd/dist/reset.css";
 import App from "./App.jsx";
+import { initCloudBase } from "./lib/cloudbase.js";
 import "./styles.css";
+
+initCloudBase();
 
 createRoot(document.getElementById("root")).render(
   <ConfigProvider

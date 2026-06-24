@@ -27,9 +27,10 @@ const { Dragger } = Upload;
 const { TextArea } = Input;
 const { Text } = Typography;
 
-const STORAGE_KEY = "pdf-watermark-config-v4";
+const STORAGE_KEY = "pdf-watermark-config-v6";
 
 const FONT_OPTIONS = [
+  { label: "Golden Goose Sans", value: '"Golden Goose Sans", sans-serif' },
   { label: "微软雅黑", value: '"Microsoft YaHei", sans-serif' },
   { label: "宋体", value: 'SimSun, "Songti SC", serif' },
   { label: "黑体", value: 'SimHei, "Heiti SC", sans-serif' },
@@ -42,13 +43,13 @@ const FONT_OPTIONS = [
 const defaultConfig = {
   watermarkText: "机密",
   fontFamily: FONT_OPTIONS[0].value,
-  color: "#d4380d",
+  color: "#D4380D",
   opacity: 0.12,
-  rotation: -28,
+  rotation: -30,
   fontSize: 22,
   tile: true,
   gapX: 180,
-  gapY: 112,
+  gapY: 200,
   position: "center",
   pages: "all",
 };
@@ -124,7 +125,7 @@ function makeTextWatermarkImage(text, config) {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
 
-  context.font = `700 ${fontSize * ratio}px ${fontFamily}`;
+  context.font = `400 ${fontSize * ratio}px ${fontFamily}`;
   const width =
     Math.max(...lines.map((line) => context.measureText(line).width), fontSize * ratio) +
     paddingX * 2 * ratio;
@@ -134,7 +135,7 @@ function makeTextWatermarkImage(text, config) {
   canvas.height = Math.ceil(height);
 
   context.clearRect(0, 0, canvas.width, canvas.height);
-  context.font = `700 ${fontSize * ratio}px ${fontFamily}`;
+  context.font = `400 ${fontSize * ratio}px ${fontFamily}`;
   context.fillStyle = colorToHex(config.color);
   context.textAlign = "center";
   context.textBaseline = "middle";

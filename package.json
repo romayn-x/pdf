@@ -8,11 +8,13 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "electron:preview": "pnpm build && electron .",
-    "dist:exe": "pnpm build && electron-builder --win nsis"
+    "electron:dev": "pnpm build && electron .",
+    "dist:exe": "pnpm build && electron-builder --win nsis",
+    "dist:portable": "pnpm build && electron-builder --win portable"
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.2",
+    "@cloudbase/js-sdk": "^3.3.11",
     "@vitejs/plugin-react": "^4.3.4",
     "antd": "^5.23.0",
     "pdf-lib": "^1.17.1",
@@ -29,10 +31,17 @@
     },
     "files": [
       "dist/**/*",
+      "electron/**/*",
       "package.json"
     ],
+    "asar": true,
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -41,8 +50,14 @@
       "createStartMenuShortcut": true
     }
   },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "electron",
+      "electron-builder",
       "esbuild"
     ]
   }
