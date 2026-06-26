@@ -31,6 +31,7 @@ const STORAGE_KEY = "pdf-watermark-config-v6";
 
 const FONT_OPTIONS = [
   { label: "Golden Goose Sans", value: '"Golden Goose Sans", sans-serif' },
+  { label: "Golden Goose Sans Condensed", value: '"Golden Goose Sans Condensed", sans-serif' },
   { label: "微软雅黑", value: '"Microsoft YaHei", sans-serif' },
   { label: "宋体", value: 'SimSun, "Songti SC", serif' },
   { label: "黑体", value: 'SimHei, "Heiti SC", sans-serif' },
