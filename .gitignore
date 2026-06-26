@@ -6,3 +6,4 @@ dist-electron
 .env.local
 .env.*.local
 /dist/
+dist.*

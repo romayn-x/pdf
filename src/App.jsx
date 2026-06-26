@@ -55,6 +55,13 @@ const defaultConfig = {
   pages: "all",
 };
 
+const PREVIEW_REF_WIDTH = 620;
+const PREVIEW_REF_HEIGHT = 877;
+const LAYER_INSET = 0.18;
+const LAYER_EXTENT = 1 + LAYER_INSET * 2;
+const TILE_START_PCT = -8;
+const TILE_END_PCT = 108;
+
 const positionMap = {
   center: { x: 0.5, y: 0.5 },
   topLeft: { x: 0.18, y: 0.16 },
@@ -62,6 +69,34 @@ const positionMap = {
   bottomLeft: { x: 0.18, y: 0.84 },
   bottomRight: { x: 0.82, y: 0.84 },
 };
+
+function previewFontSize(config) {
+  return Math.max(12, Number(config.fontSize));
+}
+
+function previewGapSteps(config) {
+  const gapX = Number(config.gapX) || defaultConfig.gapX;
+  const gapY = Number(config.gapY) || defaultConfig.gapY;
+  return {
+    stepX: Math.max(8, (gapX / PREVIEW_REF_WIDTH) * 100),
+    stepY: Math.max(7, (gapY / PREVIEW_REF_HEIGHT) * 100),
+  };
+}
+
+function layerPercentToPageCoords(xPct, yPct, pageWidth, pageHeight) {
+  return {
+    x: pageWidth * (-LAYER_INSET + (xPct / 100) * LAYER_EXTENT),
+    y: pageHeight * (-LAYER_INSET + (yPct / 100) * LAYER_EXTENT),
+  };
+}
+
+function layerPercentToPdfCenter(xPct, yPct, pageWidth, pageHeight) {
+  const css = layerPercentToPageCoords(xPct, yPct, pageWidth, pageHeight);
+  return {
+    x: css.x,
+    y: pageHeight - css.y,
+  };
+}
 
 function colorToHex(value) {
   if (!value) return defaultConfig.color;
@@ -119,7 +154,7 @@ function parsePageSpec(spec, total) {
 function makeTextWatermarkImage(text, config) {
   const ratio = window.devicePixelRatio || 1;
   const lines = text.split("\n").filter((line) => line.trim());
-  const fontSize = Math.max(10, Number(config.fontSize));
+  const fontSize = previewFontSize(config);
   const fontFamily = config.fontFamily || defaultConfig.fontFamily;
   const paddingX = fontSize * 1.2;
   const paddingY = fontSize * 0.75;
@@ -130,7 +165,7 @@ function makeTextWatermarkImage(text, config) {
   const width =
     Math.max(...lines.map((line) => context.measureText(line).width), fontSize * ratio) +
     paddingX * 2 * ratio;
-  const lineHeight = fontSize * 1.42 * ratio;
+  const lineHeight = fontSize * 1.35 * ratio;
   const height = Math.max(lines.length, 1) * lineHeight + paddingY * 2 * ratio;
   canvas.width = Math.ceil(width);
   canvas.height = Math.ceil(height);
@@ -171,15 +206,6 @@ function exportRotation(config) {
   return -Number(config.rotation || 0);
 }
 
-function getPagePoint(page, config) {
-  const { width, height } = page.getSize();
-  const point = positionMap[config.position] || positionMap.center;
-  return {
-    x: width * point.x,
-    y: height * (1 - point.y),
-  };
-}
-
 async function generatePdf(pdfFile, config) {
   const text = buildWatermarkText(config);
   if (!text) throw new Error("请填写水印文字");
@@ -195,17 +221,31 @@ async function generatePdf(pdfFile, config) {
     if (!selectedPages.has(index)) continue;
 
     const { width, height } = page.getSize();
-    const pageRatioScale = Math.min(width / 620, 1.8);
+    const pageRatioScale = width / PREVIEW_REF_WIDTH;
     const drawWidth = imageData.width * pageRatioScale;
     const drawHeight = imageData.height * pageRatioScale;
     const rotation = exportRotation(config);
 
     if (config.tile) {
-      const gapX = Math.max(24, Number(config.gapX) || defaultConfig.gapX);
-      const gapY = Math.max(24, Number(config.gapY) || defaultConfig.gapY);
-      for (let centerY = -height * 0.25; centerY <= height * 1.25; centerY += gapY) {
-        for (let centerX = -width * 0.25; centerX <= width * 1.25; centerX += gapX) {
-          const point = rotatedBottomLeftForCenter(centerX, centerY, drawWidth, drawHeight, rotation);
+      const { stepX, stepY } = previewGapSteps(config);
+      const range = TILE_END_PCT - TILE_START_PCT;
+
+      function axisPositions(step) {
+        if (step >= range * 0.6) return [50];
+        const positions = [];
+        for (let value = TILE_START_PCT; value <= TILE_END_PCT + 0.001; value += step) {
+          positions.push(value);
+        }
+        return positions.length ? positions : [50];
+      }
+
+      const xPositions = axisPositions(stepX);
+      const yPositions = axisPositions(stepY);
+
+      for (const yPct of yPositions) {
+        for (const xPct of xPositions) {
+          const center = layerPercentToPdfCenter(xPct, yPct, width, height);
+          const point = rotatedBottomLeftForCenter(center.x, center.y, drawWidth, drawHeight, rotation);
           page.drawImage(watermarkImage, {
             x: point.x,
             y: point.y,
@@ -217,11 +257,12 @@ async function generatePdf(pdfFile, config) {
         }
       }
     } else {
-      const center = getPagePoint(page, config);
-      const point = rotatedBottomLeftForCenter(center.x, center.y, drawWidth, drawHeight, rotation);
+      const point = positionMap[config.position] || positionMap.center;
+      const center = layerPercentToPdfCenter(point.x * 100, point.y * 100, width, height);
+      const drawPoint = rotatedBottomLeftForCenter(center.x, center.y, drawWidth, drawHeight, rotation);
       page.drawImage(watermarkImage, {
-        x: point.x,
-        y: point.y,
+        x: drawPoint.x,
+        y: drawPoint.y,
         width: drawWidth,
         height: drawHeight,
         rotate: degrees(rotation),
@@ -309,11 +350,23 @@ function buildPreviewItems(config) {
     return [{ x: `${point.x * 100}%`, y: `${point.y * 100}%` }];
   }
 
-  const stepX = Math.max(8, (Number(config.gapX) / 620) * 100);
-  const stepY = Math.max(7, (Number(config.gapY) / 877) * 100);
+  const { stepX, stepY } = previewGapSteps(config);
+  const range = TILE_END_PCT - TILE_START_PCT;
+
+  function axisPositions(step) {
+    if (step >= range * 0.6) return [50];
+    const positions = [];
+    for (let value = TILE_START_PCT; value <= TILE_END_PCT + 0.001; value += step) {
+      positions.push(value);
+    }
+    return positions.length ? positions : [50];
+  }
+
+  const xPositions = axisPositions(stepX);
+  const yPositions = axisPositions(stepY);
   const items = [];
-  for (let y = -8; y <= 108; y += stepY) {
-    for (let x = -8; x <= 108; x += stepX) {
+  for (const y of yPositions) {
+    for (const x of xPositions) {
       items.push({ x: `${x}%`, y: `${y}%` });
     }
   }
@@ -335,7 +388,7 @@ function WatermarkLayer({ config }) {
             "--y": item.y,
             "--color": colorToHex(config.color),
             "--opacity": config.opacity,
-            "--font-size": `${Math.max(12, Number(config.fontSize))}px`,
+            "--font-size": `${previewFontSize(config)}px`,
             "--font-family": config.fontFamily || defaultConfig.fontFamily,
             "--rotation": `${config.rotation}deg`,
           }}
@@ -436,6 +489,7 @@ export default function App() {
           <header className="header compact-header">
             <div className="title-block">
               <h1>PDF 水印工具</h1>
+              <span>v1.0.0</span>
             </div>
           </header>
 
@@ -519,10 +573,10 @@ export default function App() {
                   {config.tile ? (
                     <div className="inline-fields">
                       <Form.Item name="gapX" label="水平间距">
-                        <InputNumber min={40} max={600} style={{ width: "100%" }} />
+                        <InputNumber min={40} max={1000} style={{ width: "100%" }} />
                       </Form.Item>
                       <Form.Item name="gapY" label="垂直间距">
-                        <InputNumber min={40} max={500} style={{ width: "100%" }} />
+                        <InputNumber min={40} max={1000} style={{ width: "100%" }} />
                       </Form.Item>
                     </div>
                   ) : (
