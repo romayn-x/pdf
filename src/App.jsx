@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   App as AntApp,
   Button,
@@ -17,9 +17,16 @@ import {
   message,
 } from "antd";
 import { DownloadOutlined, FilePdfOutlined, ReloadOutlined } from "@ant-design/icons";
-import { PDFDocument, degrees } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
+import PdfPreviewCanvas from "./PdfPreviewCanvas";
+import {
+  buildWatermarkText,
+  colorToHex,
+  WATERMARK_DEFAULTS,
+} from "./watermarkLayout";
+import { applyWatermarksToPages } from "./watermarkPdf";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -43,66 +50,10 @@ const FONT_OPTIONS = [
 
 const defaultConfig = {
   watermarkText: "机密",
-  fontFamily: FONT_OPTIONS[0].value,
-  color: "#D4380D",
-  opacity: 0.12,
-  rotation: -30,
-  fontSize: 22,
-  tile: true,
-  gapX: 180,
-  gapY: 200,
-  position: "center",
+  ...WATERMARK_DEFAULTS,
+  fontFamily: FONT_OPTIONS[2].value,
   pages: "all",
 };
-
-const PREVIEW_REF_WIDTH = 620;
-const PREVIEW_REF_HEIGHT = 877;
-const LAYER_INSET = 0.18;
-const LAYER_EXTENT = 1 + LAYER_INSET * 2;
-const TILE_START_PCT = -8;
-const TILE_END_PCT = 108;
-
-const positionMap = {
-  center: { x: 0.5, y: 0.5 },
-  topLeft: { x: 0.18, y: 0.16 },
-  topRight: { x: 0.82, y: 0.16 },
-  bottomLeft: { x: 0.18, y: 0.84 },
-  bottomRight: { x: 0.82, y: 0.84 },
-};
-
-function previewFontSize(config) {
-  return Math.max(12, Number(config.fontSize));
-}
-
-function previewGapSteps(config) {
-  const gapX = Number(config.gapX) || defaultConfig.gapX;
-  const gapY = Number(config.gapY) || defaultConfig.gapY;
-  return {
-    stepX: Math.max(8, (gapX / PREVIEW_REF_WIDTH) * 100),
-    stepY: Math.max(7, (gapY / PREVIEW_REF_HEIGHT) * 100),
-  };
-}
-
-function layerPercentToPageCoords(xPct, yPct, pageWidth, pageHeight) {
-  return {
-    x: pageWidth * (-LAYER_INSET + (xPct / 100) * LAYER_EXTENT),
-    y: pageHeight * (-LAYER_INSET + (yPct / 100) * LAYER_EXTENT),
-  };
-}
-
-function layerPercentToPdfCenter(xPct, yPct, pageWidth, pageHeight) {
-  const css = layerPercentToPageCoords(xPct, yPct, pageWidth, pageHeight);
-  return {
-    x: css.x,
-    y: pageHeight - css.y,
-  };
-}
-
-function colorToHex(value) {
-  if (!value) return defaultConfig.color;
-  if (typeof value === "string") return value;
-  return value.toHexString();
-}
 
 function normalizeConfig(config) {
   return {
@@ -123,10 +74,6 @@ function loadStoredConfig() {
 
 function saveConfig(config) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeConfig(config)));
-}
-
-function buildWatermarkText(config) {
-  return (config.watermarkText || "").trim();
 }
 
 function parsePageSpec(spec, total) {
@@ -151,59 +98,8 @@ function parsePageSpec(spec, total) {
   return selected;
 }
 
-function makeTextWatermarkImage(text, config) {
-  const ratio = window.devicePixelRatio || 1;
-  const lines = text.split("\n").filter((line) => line.trim());
-  const fontSize = previewFontSize(config);
-  const fontFamily = config.fontFamily || defaultConfig.fontFamily;
-  const paddingX = fontSize * 1.2;
-  const paddingY = fontSize * 0.75;
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-
-  context.font = `400 ${fontSize * ratio}px ${fontFamily}`;
-  const width =
-    Math.max(...lines.map((line) => context.measureText(line).width), fontSize * ratio) +
-    paddingX * 2 * ratio;
-  const lineHeight = fontSize * 1.35 * ratio;
-  const height = Math.max(lines.length, 1) * lineHeight + paddingY * 2 * ratio;
-  canvas.width = Math.ceil(width);
-  canvas.height = Math.ceil(height);
-
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  context.font = `400 ${fontSize * ratio}px ${fontFamily}`;
-  context.fillStyle = colorToHex(config.color);
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-
-  const firstY = canvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
-  lines.forEach((line, index) => {
-    context.fillText(line, canvas.width / 2, firstY + index * lineHeight);
-  });
-
-  return {
-    bytes: canvas.toDataURL("image/png").split(",")[1],
-    width: canvas.width / ratio,
-    height: canvas.height / ratio,
-  };
-}
-
 async function readArrayBuffer(file) {
   return await file.arrayBuffer();
-}
-
-function rotatedBottomLeftForCenter(centerX, centerY, width, height, rotation) {
-  const angle = (Number(rotation) * Math.PI) / 180;
-  const rotatedCenterX = (width * Math.cos(angle) - height * Math.sin(angle)) / 2;
-  const rotatedCenterY = (width * Math.sin(angle) + height * Math.cos(angle)) / 2;
-  return {
-    x: centerX - rotatedCenterX,
-    y: centerY - rotatedCenterY,
-  };
-}
-
-function exportRotation(config) {
-  return -Number(config.rotation || 0);
 }
 
 async function generatePdf(pdfFile, config) {
@@ -214,62 +110,8 @@ async function generatePdf(pdfFile, config) {
   const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const pages = pdfDoc.getPages();
   const selectedPages = parsePageSpec(config.pages, pages.length);
-  const imageData = makeTextWatermarkImage(text, config);
-  const watermarkImage = await pdfDoc.embedPng(imageData.bytes);
-
-  for (const [index, page] of pages.entries()) {
-    if (!selectedPages.has(index)) continue;
-
-    const { width, height } = page.getSize();
-    const pageRatioScale = width / PREVIEW_REF_WIDTH;
-    const drawWidth = imageData.width * pageRatioScale;
-    const drawHeight = imageData.height * pageRatioScale;
-    const rotation = exportRotation(config);
-
-    if (config.tile) {
-      const { stepX, stepY } = previewGapSteps(config);
-      const range = TILE_END_PCT - TILE_START_PCT;
-
-      function axisPositions(step) {
-        if (step >= range * 0.6) return [50];
-        const positions = [];
-        for (let value = TILE_START_PCT; value <= TILE_END_PCT + 0.001; value += step) {
-          positions.push(value);
-        }
-        return positions.length ? positions : [50];
-      }
-
-      const xPositions = axisPositions(stepX);
-      const yPositions = axisPositions(stepY);
-
-      for (const yPct of yPositions) {
-        for (const xPct of xPositions) {
-          const center = layerPercentToPdfCenter(xPct, yPct, width, height);
-          const point = rotatedBottomLeftForCenter(center.x, center.y, drawWidth, drawHeight, rotation);
-          page.drawImage(watermarkImage, {
-            x: point.x,
-            y: point.y,
-            width: drawWidth,
-            height: drawHeight,
-            rotate: degrees(rotation),
-            opacity: Number(config.opacity),
-          });
-        }
-      }
-    } else {
-      const point = positionMap[config.position] || positionMap.center;
-      const center = layerPercentToPdfCenter(point.x * 100, point.y * 100, width, height);
-      const drawPoint = rotatedBottomLeftForCenter(center.x, center.y, drawWidth, drawHeight, rotation);
-      page.drawImage(watermarkImage, {
-        x: drawPoint.x,
-        y: drawPoint.y,
-        width: drawWidth,
-        height: drawHeight,
-        rotate: degrees(rotation),
-        opacity: Number(config.opacity),
-      });
-    }
-  }
+  const pageIndices = [...selectedPages];
+  await applyWatermarksToPages(pdfDoc, config, pageIndices);
 
   return await pdfDoc.save();
 }
@@ -286,126 +128,11 @@ function downloadPdf(bytes, fileName) {
   URL.revokeObjectURL(url);
 }
 
-function PdfPageCanvas({ file, onError }) {
-  const canvasRef = useRef(null);
-  const onErrorRef = useRef(onError);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    onErrorRef.current = onError;
-  }, [onError]);
-
-  useEffect(() => {
-    let cancelled = false;
-    let renderTask = null;
-
-    async function renderFirstPage() {
-      setLoaded(false);
-      if (!file || !canvasRef.current) return;
-
-      try {
-        const data = await file.arrayBuffer();
-        const loadingTask = pdfjsLib.getDocument({ data });
-        const pdf = await loadingTask.promise;
-        const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: 1.6 });
-        const canvas = canvasRef.current;
-        const context = canvas.getContext("2d");
-
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        renderTask = page.render({ canvasContext: context, viewport });
-        await renderTask.promise;
-
-        if (!cancelled) setLoaded(true);
-        await pdf.destroy();
-      } catch (reason) {
-        if (!cancelled) {
-          onErrorRef.current?.(reason instanceof Error ? reason.message : "PDF 预览失败");
-          setLoaded(false);
-        }
-      }
-    }
-
-    renderFirstPage();
-
-    return () => {
-      cancelled = true;
-      renderTask?.cancel?.();
-    };
-  }, [file]);
-
-  return (
-    <>
-      <canvas ref={canvasRef} className={`pdf-canvas ${loaded ? "is-loaded" : ""}`} />
-      {!file && <div className="empty-preview">选择 PDF 后预览第一页</div>}
-      {file && !loaded && <div className="empty-preview">正在渲染 PDF 预览...</div>}
-    </>
-  );
-}
-
-function buildPreviewItems(config) {
-  if (!config.tile) {
-    const point = positionMap[config.position] || positionMap.center;
-    return [{ x: `${point.x * 100}%`, y: `${point.y * 100}%` }];
-  }
-
-  const { stepX, stepY } = previewGapSteps(config);
-  const range = TILE_END_PCT - TILE_START_PCT;
-
-  function axisPositions(step) {
-    if (step >= range * 0.6) return [50];
-    const positions = [];
-    for (let value = TILE_START_PCT; value <= TILE_END_PCT + 0.001; value += step) {
-      positions.push(value);
-    }
-    return positions.length ? positions : [50];
-  }
-
-  const xPositions = axisPositions(stepX);
-  const yPositions = axisPositions(stepY);
-  const items = [];
-  for (const y of yPositions) {
-    for (const x of xPositions) {
-      items.push({ x: `${x}%`, y: `${y}%` });
-    }
-  }
-  return items;
-}
-
-function WatermarkLayer({ config }) {
-  const text = buildWatermarkText(config) || "机密";
-  const items = buildPreviewItems(config);
-
-  return (
-    <div className="watermark-layer">
-      {items.map((item, index) => (
-        <div
-          className="mark"
-          key={`${item.x}-${item.y}-${index}`}
-          style={{
-            "--x": item.x,
-            "--y": item.y,
-            "--color": colorToHex(config.color),
-            "--opacity": config.opacity,
-            "--font-size": `${previewFontSize(config)}px`,
-            "--font-family": config.fontFamily || defaultConfig.fontFamily,
-            "--rotation": `${config.rotation}deg`,
-          }}
-        >
-          {text}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function PdfWatermarkPreview({ config, pdfFile, onPreviewError }) {
   return (
     <div className="pdf-preview-shell">
       <div className={`paper ${pdfFile ? "has-pdf" : ""}`}>
-        <PdfPageCanvas file={pdfFile} onError={onPreviewError} />
-        <WatermarkLayer config={config} />
+        <PdfPreviewCanvas file={pdfFile} config={config} onError={onPreviewError} />
       </div>
     </div>
   );
