@@ -216,7 +216,7 @@ export default function App() {
           <header className="header compact-header">
             <div className="title-block">
               <h1>PDF 水印工具</h1>
-              <span>v1.0.2</span>
+              <span>v1.0.3</span>
             </div>
           </header>
 

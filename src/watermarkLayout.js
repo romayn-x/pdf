@@ -27,21 +27,10 @@ export const positionMap = {
   bottomRight: { x: 0.82, y: 0.84 },
 };
 
-const CJK_PATTERN = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
-
 export function colorToHex(value) {
   if (!value) return WATERMARK_DEFAULTS.color;
   if (typeof value === "string") return value;
   return value.toHexString();
-}
-
-export function hexToRgb(hex) {
-  const clean = colorToHex(hex).replace("#", "");
-  return {
-    r: parseInt(clean.slice(0, 2), 16) / 255,
-    g: parseInt(clean.slice(2, 4), 16) / 255,
-    b: parseInt(clean.slice(4, 6), 16) / 255,
-  };
 }
 
 export function previewFontSize(config) {
@@ -50,21 +39,6 @@ export function previewFontSize(config) {
 
 export function buildWatermarkText(config) {
   return (config.watermarkText || "").trim();
-}
-
-export function hasCjkText(text) {
-  return CJK_PATTERN.test(text);
-}
-
-export function isAsciiLatinText(text) {
-  if (!text || hasCjkText(text)) return false;
-  return /^[\t\n\r\x20-\x7e]+$/.test(text);
-}
-
-export function canUseVectorWatermark(text) {
-  if (!isAsciiLatinText(text)) return false;
-  const lines = text.split("\n").filter((line) => line.trim());
-  return lines.length === 1;
 }
 
 export function resolveRasterScale(pageWidth = PREVIEW_REF_WIDTH) {
@@ -219,28 +193,6 @@ export async function makeTextWatermarkImage(text, config, pageWidth = PREVIEW_R
   };
 }
 
-export function measureVectorWatermarkSize(text, config, font, pageWidth = PREVIEW_REF_WIDTH) {
-  const pageRatioScale = pageWidth / PREVIEW_REF_WIDTH;
-  const fontSize = previewFontSize(config) * pageRatioScale;
-  const paddingX = fontSize * 1.2;
-  const paddingY = fontSize * 0.75;
-  const lineHeight = fontSize * 1.35;
-  const lines = text.split("\n").filter((line) => line.trim());
-  const contentWidth = Math.max(
-    ...lines.map((line) => font.widthOfTextAtSize(line, fontSize)),
-    fontSize,
-  );
-  return {
-    width: contentWidth + paddingX * 2,
-    height: Math.max(lines.length, 1) * lineHeight + paddingY * 2,
-    fontSize,
-    lines,
-    lineHeight,
-    paddingX,
-    paddingY,
-  };
-}
-
 export function rotatedBottomLeftForCenter(centerX, centerY, width, height, rotation) {
   const angle = (Number(rotation) * Math.PI) / 180;
   const rotatedCenterX = (width * Math.cos(angle) - height * Math.sin(angle)) / 2;
@@ -282,20 +234,6 @@ export function loadWatermarkImage(imageData) {
     };
     img.src = url;
   });
-}
-
-export function resolveStandardFont(fontFamily = "") {
-  const value = fontFamily.toLowerCase();
-  if (value.includes("courier") || value.includes("mono")) return "Courier";
-  if (
-    value.includes("times") ||
-    value.includes("song") ||
-    value.includes("serif") ||
-    value.includes("宋")
-  ) {
-    return "TimesRoman";
-  }
-  return "Helvetica";
 }
 
 export function getPageLayoutSize(page) {
